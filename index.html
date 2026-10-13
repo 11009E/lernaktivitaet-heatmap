@@ -72,33 +72,20 @@
         </div>
       </div>
     </section>
-    <p class="explanation">Noch keine tatsächlichen Lernzeiten erfasst. Diese erste Version dient zur Darstellung; eine automatische Verbindung zur privaten Notion-Datenbank ist noch nicht eingerichtet.</p>
+    <p class="explanation">Noch keine synchronisierten Lernaktivitäten vorhanden.</p>
   </main>
   <script>
     "use strict";
-    // Später werden hier echte, für die Veröffentlichung freigegebene
-    // tägliche Lernminuten aus Notion geladen. Keine Testdaten vortäuschen.
-    const lernEintraege = [];
-    // Format für spätere Einträge: { datum: "2026-10-19", minuten: 60 }
 
-    const tagessummen = new Map();
-    for (const eintrag of lernEintraege) {
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(eintrag.datum) || !Number.isFinite(eintrag.minuten) || eintrag.minuten < 0) continue;
-      tagessummen.set(eintrag.datum, (tagessummen.get(eintrag.datum) || 0) + eintrag.minuten);
-    }
-    const today = new Date();
-    today.setHours(12, 0, 0, 0);
-    const first = new Date(today);
-    first.setDate(first.getDate() - 364);
-    const firstSunday = new Date(first);
-    firstSunday.setDate(firstSunday.getDate() - firstSunday.getDay());
-    const lastSaturday = new Date(today);
-    lastSaturday.setDate(lastSaturday.getDate() + (6 - lastSaturday.getDay()));
+    // This website is PUBLIC. Read only aggregated daily totals, never API tokens.
+    const colorsLegend = document.querySelector(".legend");
+    const explanation = document.querySelector(".explanation");
     const monthsElement = document.querySelector("#months");
     const daysElement = document.querySelector("#days");
     const dateKey = d => [d.getFullYear(), String(d.getMonth()+1).padStart(2, "0"), String(d.getDate()).padStart(2, "0")].join("-");
     const dateText = d => d.toLocaleDateString("de-DE", {day:"numeric", month:"long", year:"numeric"});
     const months = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
+
     function level(minuten) {
       if (minuten <= 0) return 0;
       if (minuten <= 30) return 1;
@@ -106,38 +93,80 @@
       if (minuten <= 120) return 3;
       return 4;
     }
-    let previousMonth = -1;
-    for (let week = new Date(firstSunday); week <= lastSaturday; week.setDate(week.getDate() + 7)) {
-      let label = document.createElement("span");
-      // Den Monat anzeigen, in dem der Donnerstag der Woche liegt.
-      const midweek = new Date(week);
-      midweek.setDate(midweek.getDate() + 4);
-      const currentMonth = midweek.getMonth();
-      if (currentMonth !== previousMonth) label.textContent = months[currentMonth];
-      previousMonth = currentMonth;
-      monthsElement.append(label);
-      for (let dayNumber = 0; dayNumber < 7; dayNumber++) {
-        const day = new Date(week);
-        day.setDate(day.getDate() + dayNumber);
-        const key = dateKey(day);
-        const minutes = tagessummen.get(key) || 0;
-        const cell = document.createElement("div");
-        cell.className = "day";
-        cell.dataset.level = String(level(minutes));
-        cell.title = `${dateText(day)}: ${minutes} Lernminuten`;
-        if (day < first || day > today) cell.classList.add("outside");
-        daysElement.append(cell);
+
+    function draw(daily, available) {
+      monthsElement.replaceChildren();
+      daysElement.replaceChildren();
+      const today = new Date();
+      today.setHours(12, 0, 0, 0);
+      const first = new Date(today);
+      first.setDate(first.getDate() - 364);
+      const firstSunday = new Date(first);
+      firstSunday.setDate(firstSunday.getDate() - firstSunday.getDay());
+      const lastSaturday = new Date(today);
+      lastSaturday.setDate(lastSaturday.getDate() + (6 - lastSaturday.getDay()));
+      let previousMonth = -1;
+
+      for (let week = new Date(firstSunday); week <= lastSaturday; week.setDate(week.getDate() + 7)) {
+        const label = document.createElement("span");
+        const midweek = new Date(week);
+        midweek.setDate(midweek.getDate() + 4);
+        const currentMonth = midweek.getMonth();
+        if (currentMonth !== previousMonth) label.textContent = months[currentMonth];
+        previousMonth = currentMonth;
+        monthsElement.append(label);
+
+        for (let dayNumber = 0; dayNumber < 7; dayNumber++) {
+          const day = new Date(week);
+          day.setDate(day.getDate() + dayNumber);
+          const key = dateKey(day);
+          const minutes = daily.get(key) || 0;
+          const cell = document.createElement("div");
+          cell.className = "day";
+          cell.dataset.level = String(level(minutes));
+          cell.title = `${dateText(day)}: ${available ? minutes + " Lernminuten" : "Synchronisierung ausstehend"}`;
+          if (day < first || day > today) cell.classList.add("outside");
+          daysElement.append(cell);
+        }
+      }
+
+      let totalMinutes = 0;
+      let activeDays = 0;
+      for (let day = new Date(first); day <= today; day.setDate(day.getDate() + 1)) {
+        const minutes = daily.get(dateKey(day)) || 0;
+        totalMinutes += minutes;
+        if (minutes > 0) activeDays += 1;
+      }
+      document.querySelector("#activeDays").textContent = available ? activeDays.toLocaleString("de-DE") : "–";
+      document.querySelector("#totalMinutes").textContent = available ? totalMinutes.toLocaleString("de-DE") : "–";
+      explanation.textContent = available
+        ? (activeDays ? "Die Werte werden täglich aus dem privaten Lernprotokoll zu Tagessummen zusammengefasst. Sichtbare Tageswerte sind öffentlich." : "Noch keine abgeschlossenen Lerneinheiten erfasst. Die Synchronisierung ist eingerichtet.")
+        : "Die Synchronisierung ist noch nicht veröffentlicht oder momentan nicht erreichbar.";
+    }
+
+    async function loadActivity() {
+      try {
+        const response = await fetch("./activity.json", {cache: "no-store"});
+        if (!response.ok) throw new Error("Activity file unavailable");
+        const data = await response.json();
+        if (!data || typeof data.daily_minutes !== "object" || !data.daily_minutes || Array.isArray(data.daily_minutes)) {
+          throw new Error("Invalid activity file");
+        }
+        const daily = new Map();
+        for (const [date, minutes] of Object.entries(data.daily_minutes)) {
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isSafeInteger(minutes) || minutes < 0) {
+            throw new Error("Invalid daily aggregate");
+          }
+          daily.set(date, minutes);
+        }
+        draw(daily, true);
+      } catch (error) {
+        // Never suggest a successful sync or report false zeros if data failed to load.
+        draw(new Map(), false);
       }
     }
-    let totalMinutes = 0;
-    let activeDays = 0;
-    for (let day = new Date(first); day <= today; day.setDate(day.getDate() + 1)) {
-      const minutes = tagessummen.get(dateKey(day)) || 0;
-      totalMinutes += minutes;
-      if (minutes > 0) activeDays += 1;
-    }
-    document.querySelector("#activeDays").textContent = activeDays.toLocaleString("de-DE");
-    document.querySelector("#totalMinutes").textContent = totalMinutes.toLocaleString("de-DE");
+
+    loadActivity();
   </script>
 </body>
 </html>
