@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Lernaktivität | Elektrotechnik WS 2026/27</title>
+  <style>
+    :root {
+      --green0: #ebedf0;
+      --green1: #9be9a8;
+      --green2: #40c463;
+      --green3: #30a14e;
+      --green4: #216e39;
+      --text: #24292f;
+      --muted: #57606a;
+      --border: #d0d7de;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #fff; color: var(--text); font: 14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    main { max-width: 1040px; margin: 20px auto; padding: 0 18px; }
+    h1 { margin: 0 0 14px; font-weight: 500; font-size: 22px; }
+    .card { border: 1px solid var(--border); border-radius: 8px; padding: 24px 22px 18px; }
+    .summary { display: flex; flex-wrap: wrap; gap: 20px; margin: 0 0 20px; color: var(--muted); }
+    .summary strong { color: var(--text); }
+    .calendar-scroll { overflow-x: auto; padding-bottom: 8px; }
+    .chart { display: flex; gap: 8px; min-width: max-content; }
+    .weekday-labels { width: 28px; display: grid; grid-template-rows: 20px repeat(7, 13px); row-gap: 3px; flex-shrink: 0; font-size: 11px; color: var(--muted); }
+    .weekday-labels span { align-self: center; }
+    .plot { min-width: max-content; }
+    .months { height: 20px; display: grid; grid-auto-flow: column; grid-auto-columns: 13px; column-gap: 3px; color: var(--muted); font-size: 11px; }
+    .months span { white-space: nowrap; overflow: visible; }
+    .days { display: grid; grid-auto-flow: column; grid-template-rows: repeat(7, 13px); grid-auto-columns: 13px; gap: 3px; }
+    .day { width: 13px; height: 13px; border-radius: 2px; background: var(--green0); outline-offset: 1px; }
+    .day[data-level="1"], .legend i[data-level="1"] { background: var(--green1); }
+    .day[data-level="2"], .legend i[data-level="2"] { background: var(--green2); }
+    .day[data-level="3"], .legend i[data-level="3"] { background: var(--green3); }
+    .day[data-level="4"], .legend i[data-level="4"] { background: var(--green4); }
+    .day.outside { opacity: .25; }
+    .footer { margin-top: 12px; display: flex; justify-content: space-between; flex-wrap: wrap; align-items: center; gap: 12px; color: var(--muted); font-size: 12px; }
+    .legend { display: flex; align-items: center; gap: 4px; }
+    .legend i { display: inline-block; width: 13px; height: 13px; border-radius: 2px; background: var(--green0); }
+    .explanation { color: var(--muted); font-size: 12px; line-height: 1.6; margin-top: 16px; }
+    @media (max-width: 600px) { main { padding: 0 10px; } .card { padding: 15px 10px; } h1 { font-size: 18px; } }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Lernaktivität · Elektrotechnik WS 2026/27</h1>
+    <section class="card" aria-label="Lernaktivität der letzten 365 Tage">
+      <p class="summary">
+        <span><strong id="activeDays">0</strong> aktive Lerntage</span>
+        <span><strong id="totalMinutes">0</strong> Lernminuten insgesamt</span>
+      </p>
+      <div class="calendar-scroll">
+        <div class="chart">
+          <div class="weekday-labels" aria-hidden="true">
+            <span></span><span></span><span>Mo</span><span></span><span>Mi</span><span></span><span>Fr</span><span></span>
+          </div>
+          <div class="plot">
+            <div class="months" id="months"></div>
+            <div class="days" id="days" role="img" aria-label="Jahresübersicht der täglichen Lernminuten"></div>
+          </div>
+        </div>
+      </div>
+      <div class="footer">
+        <span>Jedes Kästchen entspricht einem Kalendertag.</span>
+        <div class="legend" aria-label="Weniger bis mehr Lernzeit">
+          <span>Weniger</span>
+          <i data-level="0"></i><i data-level="1"></i><i data-level="2"></i><i data-level="3"></i><i data-level="4"></i>
+          <span>Mehr</span>
+        </div>
+      </div>
+    </section>
+    <p class="explanation">Noch keine tatsächlichen Lernzeiten erfasst. Diese erste Version dient zur Darstellung; eine automatische Verbindung zur privaten Notion-Datenbank ist noch nicht eingerichtet.</p>
+  </main>
+  <script>
+    "use strict";
+    // Später werden hier echte, für die Veröffentlichung freigegebene
+    // tägliche Lernminuten aus Notion geladen. Keine Testdaten vortäuschen.
+    const lernEintraege = [];
+    // Format für spätere Einträge: { datum: "2026-10-19", minuten: 60 }
+
+    const tagessummen = new Map();
+    for (const eintrag of lernEintraege) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(eintrag.datum) || !Number.isFinite(eintrag.minuten) || eintrag.minuten < 0) continue;
+      tagessummen.set(eintrag.datum, (tagessummen.get(eintrag.datum) || 0) + eintrag.minuten);
+    }
+    const today = new Date();
+    today.setHours(12, 0, 0, 0);
+    const first = new Date(today);
+    first.setDate(first.getDate() - 364);
+    const firstSunday = new Date(first);
+    firstSunday.setDate(firstSunday.getDate() - firstSunday.getDay());
+    const lastSaturday = new Date(today);
+    lastSaturday.setDate(lastSaturday.getDate() + (6 - lastSaturday.getDay()));
+    const monthsElement = document.querySelector("#months");
+    const daysElement = document.querySelector("#days");
+    const dateKey = d => [d.getFullYear(), String(d.getMonth()+1).padStart(2, "0"), String(d.getDate()).padStart(2, "0")].join("-");
+    const dateText = d => d.toLocaleDateString("de-DE", {day:"numeric", month:"long", year:"numeric"});
+    const months = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
+    function level(minuten) {
+      if (minuten <= 0) return 0;
+      if (minuten <= 30) return 1;
+      if (minuten <= 60) return 2;
+      if (minuten <= 120) return 3;
+      return 4;
+    }
+    let previousMonth = -1;
+    for (let week = new Date(firstSunday); week <= lastSaturday; week.setDate(week.getDate() + 7)) {
+      let label = document.createElement("span");
+      // Den Monat anzeigen, in dem der Donnerstag der Woche liegt.
+      const midweek = new Date(week);
+      midweek.setDate(midweek.getDate() + 4);
+      const currentMonth = midweek.getMonth();
+      if (currentMonth !== previousMonth) label.textContent = months[currentMonth];
+      previousMonth = currentMonth;
+      monthsElement.append(label);
+      for (let dayNumber = 0; dayNumber < 7; dayNumber++) {
+        const day = new Date(week);
+        day.setDate(day.getDate() + dayNumber);
+        const key = dateKey(day);
+        const minutes = tagessummen.get(key) || 0;
+        const cell = document.createElement("div");
+        cell.className = "day";
+        cell.dataset.level = String(level(minutes));
+        cell.title = `${dateText(day)}: ${minutes} Lernminuten`;
+        if (day < first || day > today) cell.classList.add("outside");
+        daysElement.append(cell);
+      }
+    }
+    let totalMinutes = 0;
+    let activeDays = 0;
+    for (let day = new Date(first); day <= today; day.setDate(day.getDate() + 1)) {
+      const minutes = tagessummen.get(dateKey(day)) || 0;
+      totalMinutes += minutes;
+      if (minutes > 0) activeDays += 1;
+    }
+    document.querySelector("#activeDays").textContent = activeDays.toLocaleString("de-DE");
+    document.querySelector("#totalMinutes").textContent = totalMinutes.toLocaleString("de-DE");
+  </script>
+</body>
+</html>
